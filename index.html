@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f6f3">
+  <title>Cautio · Fleet incidents</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="dashboard.css?v=ui-20261030-6">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="./" aria-label="Cautio home"><img src="cautio-logo.svg" alt="Cautio"><span class="brand-divider"></span><span>Fleet intelligence</span></a>
+    <div class="header-actions">
+      <span class="source-status" id="workbook-status-container"><span class="status-dot"></span><span id="workbook-source-badge">Workbook snapshot</span></span>
+      <button class="icon-button" id="btn-reload-data" title="Reload workbook data" aria-label="Reload workbook data"><i data-lucide="refresh-cw"></i></button>
+      <span class="workspace-avatar" title="Command center">CC</span>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <div id="drawer-backdrop" class="sidebar-backdrop" hidden></div>
+    <aside id="drawer-filters" class="filter-panel" aria-label="Incident filters">
+      <div class="panel-heading"><h2>Filters <span id="active-filter-badge" class="count-badge hidden"></span></h2><button id="btn-clear-filters" class="text-button">Reset</button><button class="icon-button mobile-close" onclick="closeDrawer('filters')" aria-label="Close filters"><i data-lucide="x"></i></button></div>
+      <div class="filter-scroll">
+        <label class="search-box" for="filter-search"><i data-lucide="search"></i><input id="filter-search" type="search" placeholder="Search vehicle, fleet or issue…" autocomplete="off"></label>
+        <fieldset class="filter-group"><legend>GPS availability</legend><div class="segmented" id="gps-filter"><button type="button" data-gps-filter="all" aria-pressed="true">All</button><button type="button" data-gps-filter="mapped" aria-pressed="false">With GPS</button><button type="button" data-gps-filter="unmapped" aria-pressed="false">Without</button></div></fieldset>
+        <div class="filter-group"><label for="filter-month">Reported month</label><select id="filter-month"><option value="all">All months</option></select></div>
+        <fieldset class="filter-group"><legend>Incident severity</legend><div class="severity-options" id="severity-filter-group"><button data-sev-pill="all" aria-pressed="true">All incidents</button><button data-sev-pill="4" aria-pressed="false"><span class="severity-dot red"></span>Accidents</button><button data-sev-pill="3" aria-pressed="false"><span class="severity-dot amber"></span>Hardware</button><button data-sev-pill="2" aria-pressed="false"><span class="severity-dot blue"></span>Operational</button><button data-sev-pill="1" aria-pressed="false"><span class="severity-dot green"></span>Routine</button></div></fieldset>
+        <div class="filter-group"><label for="filter-client">Fleet / client</label><select id="filter-client"><option value="all">All fleets</option></select></div>
+        <div class="filter-group"><label for="filter-hotzone">Corridor</label><select id="filter-hotzone"><option value="all">All India</option><option value="bangalore">Bangalore</option><option value="mumbai-pune">Mumbai–Pune</option><option value="delhi-ncr">Delhi NCR</option><option value="chennai-krishnagiri">Chennai–Krishnagiri</option><option value="hyderabad">Hyderabad</option><option value="kolkata">Kolkata</option><option value="punjab-gt">Punjab–Haryana</option><option value="gujarat">Gujarat</option><option value="central-india">Central India</option></select></div>
+        <div class="filter-group"><label for="filter-subrequest">Issue category</label><select id="filter-subrequest"><option value="all">All categories</option></select></div>
+        <div class="filter-group"><label for="filter-resolved">Resolution</label><select id="filter-resolved"><option value="all">All statuses</option><option value="Yes">Resolved</option><option value="No">Pending</option></select></div>
+        <label class="check-row today-filter"><input id="toggle-filter-today" type="checkbox" onchange="toggleTodayFilter(this.checked)"><span>Reported today</span><span id="drawer-today-count" class="count-badge">0</span></label>
+      </div>
+      <div class="source-note"><i data-lucide="file-spreadsheet"></i><div><strong>Location Updated tracker</strong><p>Saved workbook · live sync off</p><span id="workbook-source-details" class="sr-only"></span></div></div>
+    </aside>
+
+    <main id="main-workspace" class="main-workspace" data-view="map">
+      <section class="page-heading"><div><p class="eyebrow">OPERATIONS / INCIDENT OVERVIEW</p><h1>Fleet incidents<span class="heading-dot">.</span></h1><p class="page-description">Understand where incidents happen. Know what needs attention.</p></div><div class="page-actions"><button id="btn-toggle-filters" class="button mobile-filter" onclick="toggleDrawer('filters')"><i data-lucide="sliders-horizontal"></i>Filters</button><button class="button" id="btn-export-csv" aria-label="Export current view"><i data-lucide="download"></i><span>Export view</span></button></div></section>
+
+      <section class="metrics" aria-label="Incident summary">
+        <article class="metric-card"><div class="metric-label">Total incidents<i data-lucide="files"></i></div><strong id="kpi-total-incidents">—</strong><p id="summary-total-caption">Across all fleets</p></article>
+        <button class="metric-card metric-gps" data-gps-shortcut="mapped" title="Show incidents with GPS"><div class="metric-label">Located on map<i data-lucide="map-pin"></i></div><strong id="kpi-mapped">—</strong><p><span id="summary-coverage">—</span> with recorded coordinates <i data-lucide="arrow-up-right"></i></p></button>
+        <button class="metric-card" data-gps-shortcut="unmapped" title="Show incidents without GPS in the logbook"><div class="metric-label">Without coordinates<i data-lucide="map-pin-off"></i></div><strong id="kpi-unmapped">—</strong><p>Available in the incident log <i data-lucide="arrow-up-right"></i></p></button>
+        <article class="metric-card"><div class="metric-label">Resolved<i data-lucide="circle-check"></i></div><strong id="kpi-resolution-rate">—</strong><p id="summary-resolution-caption">Of the selected incidents</p></article>
+      </section>
+
+      <section class="content-card">
+        <div class="view-toolbar"><nav class="view-tabs" aria-label="Incident views"><button id="btn-mode-map" class="view-tab active" onclick="switchTab('map')" aria-current="page"><i data-lucide="map"></i>Map view</button><button id="btn-toggle-logbook" class="view-tab" onclick="switchTab('logbook')"><i data-lucide="list"></i>Incident log<span id="bar-incident-count" class="count-badge">—</span></button><button id="btn-toggle-insights" class="view-tab" onclick="switchTab('analytics')"><i data-lucide="chart-no-axes-combined"></i>Insights</button></nav><span id="view-context" class="view-context">All India</span></div>
+
+        <section id="map-view" class="view-panel map-view" aria-label="Incident map">
+          <div id="map-container" role="region" aria-label="Map of recorded incident coordinates"></div>
+          <div class="map-caption"><span class="status-dot"></span><strong id="map-point-count">— locations</strong><span>Recorded GPS only</span></div>
+          <div class="map-controls"><button id="hud-zoom-in" class="icon-button" title="Zoom in" aria-label="Zoom in"><i data-lucide="plus"></i></button><button id="hud-zoom-out" class="icon-button" title="Zoom out" aria-label="Zoom out"><i data-lucide="minus"></i></button><span></span><button id="hud-reset-india" class="icon-button" title="Reset to India" aria-label="Reset to India"><i data-lucide="locate-fixed"></i></button><button id="btn-fullscreen" class="icon-button" title="Fullscreen" aria-label="Fullscreen"><i data-lucide="maximize"></i></button></div>
+          <details class="map-settings"><summary><i data-lucide="layers"></i>Map layers<i data-lucide="chevron-down"></i></summary><div class="map-settings-body"><label class="check-row"><input id="toggle-layer-heat" type="checkbox" checked>Heatmap</label><label class="check-row"><input id="toggle-layer-clusters" type="checkbox" checked>Incident clusters</label><label class="check-row"><input id="toggle-layer-spotlight" type="checkbox">Accident markers</label><label class="check-row"><input id="toggle-layer-zones" type="checkbox">Corridor labels</label><label class="check-row"><input id="toggle-layer-boundary" type="checkbox" checked>India boundary</label><label for="select-basemap" class="control-label">Basemap</label><select id="select-basemap"><option value="esri_streets">Street map</option><option value="esri_satellite">Satellite</option></select><label class="check-row"><input id="heat-mode-toggle" type="checkbox" checked>Weight by severity</label><span id="heat-mode-label" class="sr-only">Risk-Weighted (Accidents 5x)</span><label class="range-label" for="slider-heat-radius">Radius<span id="val-heat-radius">25px</span></label><input id="slider-heat-radius" type="range" min="10" max="60" value="25"><label class="range-label" for="slider-heat-blur">Blur<span id="val-heat-blur">20px</span></label><input id="slider-heat-blur" type="range" min="10" max="45" value="20"><label class="range-label" for="slider-heat-opacity">Opacity<span id="val-heat-opacity">30%</span></label><input id="slider-heat-opacity" type="range" min="15" max="90" value="30"></div></details>
+          <div class="map-legend"><span>Incident density</span><div class="density-scale"></div><div><span>Lower</span><span>Higher</span></div></div>
+          <div id="map-empty" class="map-empty" hidden><i data-lucide="map-pin-off"></i><h3>No recorded locations in this view</h3><p id="map-empty-description">These incidents are still available in the incident log.</p><button class="button primary" onclick="switchTab('logbook')">View incident log<i data-lucide="arrow-right"></i></button></div>
+          <div id="map-tile-notice" class="tile-notice" hidden>Some basemap tiles could not load. Recorded incident locations are still shown.</div>
+        </section>
+
+        <section id="drawer-logbook" class="view-panel logbook-view" aria-label="Incident log" hidden>
+          <div class="logbook-toolbar"><div><h2>Incident log</h2><p id="logbook-summary">Every incident, including those without coordinates.</p></div><label class="sort-control" for="table-sort">Sort<select id="table-sort"><option value="newest">Newest reported</option><option value="oldest">Oldest reported</option><option value="severity">Highest severity</option></select></label></div>
+          <div class="table-scroll"><table class="incident-table"><thead><tr><th>Issue / reported</th><th>Vehicle / fleet</th><th>Incident</th><th>Location</th><th>Severity</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="table-body"></tbody></table></div>
+          <div class="table-footer"><span id="table-page-info">Loading…</span><div><button id="table-prev-btn" class="button"><i data-lucide="chevron-left"></i>Previous</button><button id="table-next-btn" class="button">Next<i data-lucide="chevron-right"></i></button></div></div>
+        </section>
+
+        <section id="drawer-insights" class="view-panel insights-view" aria-label="Incident insights" hidden>
+          <div class="insights-heading"><div><h2>A closer look at your fleet</h2><p>Charts reflect the current filters.</p></div><span class="neutral-badge">Workbook data</span></div>
+          <div class="insights-stats"><div><span>Accidents</span><strong id="kpi-critical-accidents">—</strong></div><div><span>Vehicles</span><strong id="kpi-vehicles-impacted">—</strong></div><div><span>Fleets</span><strong id="kpi-active-clients">—</strong></div><div><span>Mapped corridors</span><strong id="kpi-active-hotzones">—</strong></div></div>
+          <div class="charts-grid"><article class="chart-card wide"><h3>Incidents over time</h3><p>By month reported</p><div class="chart-frame"><canvas id="chart-timeline"></canvas></div></article><article class="chart-card"><h3>Issue categories</h3><p>Most frequently reported</p><div class="chart-frame"><canvas id="chart-categories"></canvas></div></article><article class="chart-card"><h3>Corridor distribution</h3><p>Incidents with recorded coordinates</p><div class="chart-frame"><canvas id="chart-hotzones"></canvas></div></article><article class="chart-card"><h3>Fleets by incident count</h3><p>Top eight fleets in this view</p><div class="chart-frame"><canvas id="chart-clients"></canvas></div></article><article class="chart-card"><h3>Resolution status</h3><p>Resolved and pending incidents</p><div class="chart-frame"><canvas id="chart-resolution"></canvas></div></article></div>
+        </section>
+      </section>
+      <footer class="workspace-footer"><span><span class="status-dot"></span>Location Updated workbook</span><span>First recorded point per incident. Missing GPS is never estimated.</span></footer>
+    </main>
+  </div>
+
+  <div id="incident-modal" class="incident-modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <section id="incident-modal-card" class="incident-detail">
+      <header class="detail-header"><div><p class="eyebrow">INCIDENT DETAILS</p><h2 id="modal-title"><span id="modal-issue-id">—</span></h2></div><button id="modal-close-btn" class="icon-button" aria-label="Close incident details"><i data-lucide="x"></i></button></header>
+      <div class="detail-scroll"><div class="detail-badges"><span id="modal-severity-badge"></span><span id="modal-status-badge"></span></div><div class="vehicle-detail"><i data-lucide="bus-front"></i><div><strong id="modal-vehicle">—</strong><span id="modal-client">—</span></div></div><dl class="detail-grid"><div><dt>Reported</dt><dd id="modal-raised-at">—</dd></div><div><dt>Resolved</dt><dd id="modal-resolved-at">—</dd></div><div><dt>Assigned to</dt><dd id="modal-assigned-to">—</dd></div><div><dt>Issue category</dt><dd id="modal-subrequest">—</dd></div></dl><section class="detail-section"><h3>Incident description</h3><p id="modal-details">—</p></section><section class="detail-section"><h3>Field notes</h3><p id="modal-remarks">—</p></section><section class="detail-section"><h3>Corrective action</h3><p id="modal-correction">—</p></section><section class="coordinates-detail"><h3><i data-lucide="map-pin"></i>Recorded location</h3><p id="modal-location">—</p><p id="modal-coords">—</p></section></div>
+      <footer class="detail-footer"><button class="button" onclick="closeModal()">Close</button><button id="modal-locate-btn" class="button primary" onclick="locateCurrentModalIncident()"><i data-lucide="locate-fixed"></i>Locate on map</button></footer>
+    </section>
+  </div>
+  <div id="toast-container" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="data-snapshot.js?v=workbook-20261029"></script>
+  <script src="coordinates.js?v=workbook-20261029"></script>
+  <script src="india-boundary.js"></script>
+  <script src="app.js?v=workbook-20261029-ui7"></script>
+</body>
+</html>
